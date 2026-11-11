@@ -6,8 +6,8 @@
 
 
 #include <Arduino.h>
-#include "USBConnection.h"
-#include "BLEConnection.h"
+#include "src/USBConnection.h"
+#include "src/BLEConnection.h"
 
 #include <FastLED.h>
 

@@ -72,9 +72,8 @@ Visit the [Github.io](https://liamlah.github.io/Portamentum-MIDI/) page for a on
 - Download the Casiotone DIY Bluetooth repo and extract into your home/Arduino folder
 - Ensure your settings match these below:
 - ![settings](https://github.com/user-attachments/assets/7a202972-b3cf-4ad0-afdb-1aaa7b478673)
-- Copy the contents of the src folder into the DIY_Casiotone_Bluetooth/examples/Raw-USB-BLE/ folder.
 - Plug the ESP32 into the computer via the com port, lablelled on the underside of the board. On Linux you may need to give
-- Open the Raw-USB-BLE.ino in the IDE and click upload
+- Open CT-USB-BLE/CT-USB-BLE.ino in the IDE and click upload (the source files it needs are already in CT-USB-BLE/src/)
 - The device is now ready to be plugged into the Casiotone keyboard using the cable configuration detailed below. However if you want to confirm it is working first, keep the ESP32 plugged into the computer, click the "Serial monitor" icon up the top right, and plug the ESP32's OTG port into the Casiotone keyboard's micro USB port. You should see "MIDI device connected!" in the IDE console, and key presses on your keyboard should appear in the console. You can alse test BLE connectivity. by attempting to connect a device. The ESP32 will broadcast as 'WU-BT10'
 
 ## Cable Configuration
