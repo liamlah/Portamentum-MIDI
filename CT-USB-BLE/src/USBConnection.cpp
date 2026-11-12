@@ -80,9 +80,8 @@ bool USBConnection::begin() {
 void USBConnection::task() {
     // USB polling runs on the dedicated task (_usbTask on core 0).
     // Here we only drain the queue and forward to onMidiDataReceived().
+    // OUT sending is kicked by sendMidi(), _onSend() and _usbTask.
     processQueue();
-    processOutQueue();
-
 }
 
 void USBConnection::onDeviceConnected() {
@@ -255,49 +254,40 @@ bool USBConnection::enqueueMidiOut(const uint8_t* data, size_t length) {
     return true;
 }
 
+// Safe to call from either core: the in-flight check and the claim happen
+// under one lock, so only one caller can ever own the OUT transfer.
 void USBConnection::processOutQueue() {
-    if (outTransferInFlight || !isReady || !midiOutTransfer) return;
-    
-    portENTER_CRITICAL(&outQueueMux);
-    if (outQueueTail == outQueueHead) {
-        portEXIT_CRITICAL(&outQueueMux);
-        return; // queue empty
-    }
-    RawUsbMessage msg = usbOutQueue[outQueueTail];
-    outQueueTail = (outQueueTail + 1) % QUEUE_SIZE;
-    portEXIT_CRITICAL(&outQueueMux);
+    if (!isReady || !midiOutTransfer) return;
 
-// Batch as many queued messages as possible into one USB transfer
+    // Batch as many queued messages as possible into one USB transfer,
+    // never more than the transfer's own buffer can hold
     uint8_t buffer[64];
+    int cap = (midiOutTransfer->data_buffer_size < sizeof(buffer))
+                ? (int)midiOutTransfer->data_buffer_size : (int)sizeof(buffer);
     int bufLen = 0;
 
-    // Add the first message we already dequeued
-    buffer[bufLen++] = _midiStatusToCIN(msg.data[0]);
-    buffer[bufLen++] = msg.data[0];
-    buffer[bufLen++] = (msg.length > 1) ? msg.data[1] : 0x00;
-    buffer[bufLen++] = (msg.length > 2) ? msg.data[2] : 0x00;
-
-    // Drain any additional queued messages into the same transfer
-    while (bufLen + 4 <= 64) {
-        portENTER_CRITICAL(&outQueueMux);
-        if (outQueueTail == outQueueHead) {
-            portEXIT_CRITICAL(&outQueueMux);
-            break;
-        }
-        RawUsbMessage next = usbOutQueue[outQueueTail];
-        outQueueTail = (outQueueTail + 1) % QUEUE_SIZE;
+    // Check-and-claim under one lock, so only one core can ever win
+    portENTER_CRITICAL(&outQueueMux);
+    if (outTransferInFlight || outQueueTail == outQueueHead) {
         portEXIT_CRITICAL(&outQueueMux);
-
-        buffer[bufLen++] = _midiStatusToCIN(next.data[0]);
-        buffer[bufLen++] = next.data[0];
-        buffer[bufLen++] = (next.data[1]);
-        buffer[bufLen++] = (next.data[2]);
+        return; // busy, or queue empty
     }
+    outTransferInFlight = true;
+    while (outQueueTail != outQueueHead && bufLen + 4 <= cap) {
+        const RawUsbMessage& m = usbOutQueue[outQueueTail];
+        buffer[bufLen++] = _midiStatusToCIN(m.data[0]);
+        buffer[bufLen++] = m.data[0];
+        buffer[bufLen++] = (m.length > 1) ? m.data[1] : 0x00;
+        buffer[bufLen++] = (m.length > 2) ? m.data[2] : 0x00;
+        outQueueTail = (outQueueTail + 1) % QUEUE_SIZE;
+    }
+    portEXIT_CRITICAL(&outQueueMux);
 
     memcpy(midiOutTransfer->data_buffer, buffer, bufLen);
     midiOutTransfer->num_bytes = bufLen;
-    outTransferInFlight = true;
-    usb_host_transfer_submit(midiOutTransfer);
+    if (usb_host_transfer_submit(midiOutTransfer) != ESP_OK) {
+        outTransferInFlight = false;   // never leave the OUT path wedged
+    }
 }
 
 bool USBConnection::sendMidi(const uint8_t* data, size_t length) {
