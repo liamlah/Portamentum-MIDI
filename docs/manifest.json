@@ -1,6 +1,6 @@
 {
   "name": "Casio BLE MIDI Bridge",
-  "version": "0.7.0",
+  "version": "1.0.0",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

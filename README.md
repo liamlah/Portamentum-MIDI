@@ -37,7 +37,7 @@ This project mimics the BLE Midi functionality of the WU-BT10, allowing pairing 
 
 **Unlike the WU-BT10, this project *does not* support bluetooth audio-in, this is a limitation of the Micro USB port on the Casiotone devices, which does not USB Audio Class as a device.**
 
-Sending MIDI notes from the keyboard via the device to a DAW works flawlessly in testing, with the minimal latency expected with BLE. _As of the mid july update, bidirectional MIDI now works reliably. _
+Sending MIDI notes from the keyboard via the device to a DAW works flawlessly in testing, with the minimal latency expected with BLE. Bidirectional MIDI works reliably. As of version 1.0 (November 2026), the dropped and stuck notes when playing from a MIDI app to the keyboard's speakers have been fixed.
 
 ---
 
@@ -88,7 +88,7 @@ Unlike the WU-BT10, we cannot use the USB A port for MIDI out, as it uses a prop
 - Turn on the keyboard. If the LED is red, then it is not detecting the keyboard, ensure the USB cables are in the correct ports, are not damaged, and are pushed fully into the port.
 - When connected to the keyboard, the LED will start flashing blue. Pair to your computer, tablet, etc. with BLE MIDI. Different operating systems will use different methods, often it is not the same as connecting a traditional Bluetooth device. On Android you may need to use something like [MIDI BLE Connect](https://play.google.com/store/apps/details?id=com.mobileer.example.midibtlepairing) in order for a MIDI app to see the device.
 - When the device is both connected to the Casiotone Keyboard and paired via BLE, the LED will turn green, and you are ready to play.
-- If the device becomes disconnected from the keyboard, it will reset in order to attempt to re-initiate the USB handshake, this means you will have to reconnect via BLE MIDI.
+- If the device becomes disconnected from the keyboard, the LED will turn red. Plug it back in and it will reconnect to the keyboard by itself. As of version 1.0 the device no longer resets when this happens, so your BLE MIDI connection stays up and you do not need to reconnect.
 
 ## Troubleshooting
 
@@ -144,6 +144,6 @@ Change this to whatever you want it to be broadcast as, but note the 'Casio Musi
 
 ## Issues
 
-- [ ] Device does not cleanly reconnect if connection is lost (e.g if the port is jostled). The current workaround is that the board automatically reboots on a lost USB connection. This increases reliability with the keyboard, but means BLE must be re-paired with your device. This is a minor issue when using reliable cables. Contributions are welcome for this fix.
-- [X] ~~MIDI is unidirectional presently. Keyboard > ESP32 > MIDI app. I haven't been able to reliably implement it bidirectionally (so you can't transmit tones from MIDI app to keyboard speakers) without significant issues with notes getting dropped. Feature is off until I can work out a solution.~~ Solved. Now works reliably unidirectionally.
+- [X] ~~Device does not cleanly reconnect if connection is lost (e.g if the port is jostled). The current workaround is that the board automatically reboots on a lost USB connection. This increases reliability with the keyboard, but means BLE must be re-paired with your device.~~ Solved in version 1.0. The device now reconnects to the keyboard without rebooting, and BLE stays connected.
+- [X] ~~MIDI is unidirectional presently. Keyboard > ESP32 > MIDI app. I haven't been able to reliably implement it bidirectionally (so you can't transmit tones from MIDI app to keyboard speakers) without significant issues with notes getting dropped. Feature is off until I can work out a solution.~~ Solved. Now works reliably bidirectionally. The remaining dropped notes in dense music were fixed in version 1.0 (BLE MIDI packets over 20 bytes were being discarded).
 
