@@ -56,7 +56,7 @@ protected:
 public:
     // RX ring buffer — onWrite() enqueues, task() drains.
     // Keeps the BT host task fast so controller ACL buffers don't exhaust.
-    struct BleRxPacket { uint8_t data[20]; uint8_t length; };
+    struct BleRxPacket { uint8_t data[128]; uint16_t length; };  // sized to match setMTU(128)
     static const int RX_QUEUE_SIZE = 64;
     BleRxPacket rxQueue[RX_QUEUE_SIZE];
     volatile int rxHead;

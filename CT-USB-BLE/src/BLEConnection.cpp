@@ -16,6 +16,9 @@ BLEConnection::~BLEConnection() {
 
 void BLEConnection::begin(const std::string& deviceName) {
     BLEDevice::init(String(deviceName.c_str()));
+    // Cap the MTU (maximum transmission unit) so packets always fit BleRxPacket.
+    // Without this the phone can negotiate up to 517 and send packets we drop.
+    BLEDevice::setMTU(128);
     pServer = BLEDevice::createServer();
     class ServerCallbacks : public BLEServerCallbacks {
     void onDisconnect(BLEServer* pServer) override {
