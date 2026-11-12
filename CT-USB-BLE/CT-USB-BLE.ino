@@ -153,6 +153,21 @@ void loop() {
     usbMidi.task();
     bleMidi.task();
     delayMicroseconds(10);
+
+    // Drop counters: print every 2 s, only when something changed.
+    // All zero while notes still go missing = loss happened before the ESP32.
+    static uint32_t lastDropMs = 0;
+    static uint32_t lastDropSum = 0;
+    if (millis() - lastDropMs > 2000) {
+        lastDropMs = millis();
+        uint32_t a = bleMidi.rxQueueFullDrops, b = bleMidi.rxOversizeDrops;
+        uint32_t c = usbMidi.outQueueFullDrops, d = usbMidi.outSubmitFails;
+        if (a + b + c + d != lastDropSum) {
+            lastDropSum = a + b + c + d;
+            Serial.printf("[DROPS] bleRxFull=%lu bleOversize=%lu usbOutFull=%lu usbSubmitFail=%lu\n",
+                          (unsigned long)a, (unsigned long)b, (unsigned long)c, (unsigned long)d);
+        }
+    }
     // Blue flashing when BLE not connected
     static uint32_t lastLedMs = 0;
     static bool ledState = false;

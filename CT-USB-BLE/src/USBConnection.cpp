@@ -242,6 +242,7 @@ bool USBConnection::enqueueMidiOut(const uint8_t* data, size_t length) {
     portENTER_CRITICAL(&outQueueMux);
     int next = (outQueueHead + 1) % QUEUE_SIZE;
     if (next == outQueueTail) {
+        outQueueFullDrops = outQueueFullDrops + 1;
         portEXIT_CRITICAL(&outQueueMux);
         return false; // queue full
     }
@@ -286,6 +287,7 @@ void USBConnection::processOutQueue() {
     memcpy(midiOutTransfer->data_buffer, buffer, bufLen);
     midiOutTransfer->num_bytes = bufLen;
     if (usb_host_transfer_submit(midiOutTransfer) != ESP_OK) {
+        outSubmitFails = outSubmitFails + 1;
         outTransferInFlight = false;   // never leave the OUT path wedged
     }
 }

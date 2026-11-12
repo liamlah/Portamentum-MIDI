@@ -58,8 +58,12 @@ void BLEConnection::begin(const std::string& deviceName) {
                     memcpy(bleCon->rxQueue[bleCon->rxHead].data, data, len);
                     bleCon->rxQueue[bleCon->rxHead].length = len;
                     bleCon->rxHead = next;
+                } else {
+                    bleCon->rxQueueFullDrops = bleCon->rxQueueFullDrops + 1;
                 }
                 portEXIT_CRITICAL(&bleCon->rxMux);
+            } else if (len > sizeof(BleRxPacket::data)) {
+                bleCon->rxOversizeDrops = bleCon->rxOversizeDrops + 1;
             }
         }
     };

@@ -62,6 +62,10 @@ public:
     volatile int rxHead;
     volatile int rxTail;
     portMUX_TYPE rxMux;
+
+    // Drop counters (diagnostics) — packets discarded in onWrite()
+    volatile uint32_t rxQueueFullDrops = 0;  // rxQueue was full
+    volatile uint32_t rxOversizeDrops  = 0;  // packet longer than BleRxPacket::data
 };
 
 #endif // BLE_CONNECTION_H

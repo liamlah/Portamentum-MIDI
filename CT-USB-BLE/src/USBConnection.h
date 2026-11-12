@@ -50,6 +50,10 @@ public:
     int getQueueSize() const;
     const RawUsbMessage& getQueueMessage(int index) const;
 
+    // Drop counters (diagnostics) — app → keyboard path
+    volatile uint32_t outQueueFullDrops = 0;  // usbOutQueue full in enqueueMidiOut()
+    volatile uint32_t outSubmitFails    = 0;  // usb_host_transfer_submit() failed for OUT
+
 protected:
     bool isReady;
     uint8_t interval;         // Polling interval (ms)
