@@ -84,6 +84,13 @@ protected:
     volatile bool enumRetryPending;
     uint32_t enumRetryTime;
 
+    // Unplug handling: DEV_GONE sets devGonePending, then _usbTask calls
+    // _cleanupDevice() until the device is fully closed (no reboot needed).
+    volatile bool devGonePending = false;
+    uint32_t devGoneTime = 0;
+    int claimedInterface = -1;   // interface number we hold, -1 if none
+    void _cleanupDevice();
+
     // Connection control data
     bool firstMidiReceived;
     bool isMidiDeviceConfirmed;

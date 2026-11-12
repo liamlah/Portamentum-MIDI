@@ -162,6 +162,9 @@ void USBConnection::_usbTask(void* arg) {
         usb_host_client_handle_events(usbCon->clientHandle, 1);
         usbCon->processOutQueue();
 
+        // Finish closing an unplugged device (see _cleanupDevice)
+        if (usbCon->devGonePending) usbCon->_cleanupDevice();
+
         // Handle non-blocking enum retry
         if (usbCon->enumRetryPending && millis() > usbCon->enumRetryTime) {
             usbCon->enumRetryPending = false;
@@ -201,17 +204,68 @@ void USBConnection::_clientEventCallback(const usb_host_client_event_msg_t *even
             usbCon->onDeviceConnected();
             break;
         case USB_HOST_CLIENT_EVENT_DEV_GONE:
+            // Keyboard unplugged. Stop using the device now; _usbTask then
+            // runs _cleanupDevice() to close it properly. Closing the device
+            // is what lets the host stack accept a new one on replug, so BLE
+            // stays connected and no reboot is needed.
             usbCon->isReady = false;
-            usbCon->transferInFlight = false;
-            if (usbCon->midiTransfer) {
-                usb_host_transfer_free(usbCon->midiTransfer);
-                usbCon->midiTransfer = nullptr;
-            }
-            Serial.println("[USB] Device gone - rebooting...");
-            delay(500); // let serial flush
-            ESP.restart();
+            usbCon->devGoneTime = millis();
+            usbCon->devGonePending = true;
+            Serial.println("[USB] Device gone - closing, waiting for replug...");
+            usbCon->onDeviceDisconnected();
             break;
     }
+}
+
+// Runs on the USB task (core 0) after DEV_GONE, once per pass until done.
+// Order matters: wait for in-flight transfers to come back, release the
+// interface, free the transfers, then close the device.
+void USBConnection::_cleanupDevice() {
+    uint32_t elapsed = millis() - devGoneTime;
+
+    // Let core 1 finish any processOutQueue() call that started before
+    // isReady went false, so we never free a transfer it is still touching.
+    if (elapsed < 50) return;
+
+    // Last resort: if the clean-up is stuck, fall back to the old behaviour.
+    if (elapsed > 3000) {
+        Serial.println("[USB] Clean-up stuck - rebooting...");
+        delay(500); // let serial flush
+        ESP.restart();
+    }
+
+    // The stack hands back in-flight transfers through _onReceive/_onSend,
+    // which clear these flags. Don't free anything until they are back.
+    if (transferInFlight || outTransferInFlight) return;
+
+    if (claimedInterface >= 0) {
+        if (usb_host_interface_release(clientHandle, deviceHandle, claimedInterface) != ESP_OK) {
+            return; // not ready yet — try again next pass
+        }
+        claimedInterface = -1;
+    }
+    if (midiTransfer) {
+        usb_host_transfer_free(midiTransfer);
+        midiTransfer = nullptr;
+    }
+    if (midiOutTransfer) {
+        usb_host_transfer_free(midiOutTransfer);
+        midiOutTransfer = nullptr;
+    }
+    if (deviceHandle) {
+        usb_host_device_close(clientHandle, deviceHandle);
+        deviceHandle = nullptr;
+    }
+
+    // Throw away notes queued for the old connection so they don't
+    // burst out when the keyboard comes back.
+    portENTER_CRITICAL(&outQueueMux);
+    outQueueTail = outQueueHead;
+    portEXIT_CRITICAL(&outQueueMux);
+
+    enumRetryPending = false;
+    devGonePending = false;
+    Serial.println("[USB] Device closed. Ready for replug.");
 }
 
 
@@ -293,6 +347,7 @@ void USBConnection::processOutQueue() {
 }
 
 bool USBConnection::sendMidi(const uint8_t* data, size_t length) {
+    if (!isReady) return false;   // no keyboard: don't queue stale notes
     bool ok = enqueueMidiOut(data, length);
     processOutQueue(); // kick-start if no transfer in flight (no-op when busy)
     return ok;
@@ -311,15 +366,24 @@ void USBConnection::_onReceive(usb_transfer_t *transfer) {
         }
     }
 
-    if (usbCon->isReady && !usbCon->transferInFlight) {
+    // A transfer handed back because the keyboard was unplugged must not be
+    // resubmitted; this callback can arrive before the DEV_GONE event does.
+    bool deviceGone = (transfer->status == USB_TRANSFER_STATUS_NO_DEVICE ||
+                       transfer->status == USB_TRANSFER_STATUS_CANCELED);
+
+    if (usbCon->isReady && !deviceGone && !usbCon->transferInFlight) {
         usbCon->transferInFlight = true;
-        usb_host_transfer_submit(transfer);
+        if (usb_host_transfer_submit(transfer) != ESP_OK) {
+            usbCon->transferInFlight = false;   // keep the flag truthful
+        }
     }
 }
 
 void USBConnection::_onSend(usb_transfer_t *transfer) {
     USBConnection *usbCon = static_cast<USBConnection*>(transfer->context);
     usbCon->outTransferInFlight = false;
+    if (transfer->status == USB_TRANSFER_STATUS_NO_DEVICE ||
+        transfer->status == USB_TRANSFER_STATUS_CANCELED) return; // keyboard unplugged
     usbCon->processOutQueue(); // send next queued message if any
 }
 
@@ -377,6 +441,7 @@ void USBConnection::_processConfig(const usb_config_desc_t *config_desc) {
                                         interval = (bInterval == 0) ? 1 : bInterval;
                                         isReady = true;
                                         claimedOk = true;
+                                        claimedInterface = bInterfaceNumber; // released in _cleanupDevice()
                                         transferInFlight = true;
                                         vTaskDelay(pdMS_TO_TICKS(200)); // Delay for CT-S1 before first transfer
                                         usb_host_transfer_submit(midiTransfer);  // first transfer after setup
