@@ -11,6 +11,13 @@
 
 #include <FastLED.h>
 
+// Debug printing on the hot paths (every key press, every BLE packet).
+// At 115200 baud each printed packet costs milliseconds and can make loop()
+// fall behind, so this MUST be 0 for release builds. Set to 1 to see
+// [USB] CIN, [BLE] Raw, [STATS] and [DROPS] lines on the serial monitor.
+#define MIDI_DEBUG 0
+#define DBG(...) do { if (MIDI_DEBUG) Serial.printf(__VA_ARGS__); } while (0)
+
 #define LED_PIN 48
 #define NUM_LEDS 1
 CRGB leds[NUM_LEDS];
@@ -25,7 +32,7 @@ public:
         // data[1] = MIDI status byte (e.g., 0x90 = NoteOn ch1)
         // data[2] = MIDI data byte 1 (e.g., note number)
         // data[3] = MIDI data byte 2 (e.g., velocity)
-        Serial.printf("[USB] CIN:%02X  Status:%02X  Data1:%02X  Data2:%02X  BLE:%s\n",
+        DBG("[USB] CIN:%02X  Status:%02X  Data1:%02X  Data2:%02X  BLE:%s\n",
                   data[0], data[1], data[2], data[3],
                   bleMidi.isConnected() ? "CONNECTED" : "NOT CONNECTED");
 
@@ -59,11 +66,13 @@ MyRawUSB usbMidi;
 BLEConnection bleMidi;
 
 void onBleRawData(const uint8_t* data, size_t length) {
-    Serial.printf("[BLE] Raw %d bytes:", length);
-    for (size_t i = 0; i < length; i++) {
-        Serial.printf(" %02X", data[i]);
+    if (MIDI_DEBUG) {
+        Serial.printf("[BLE] Raw %d bytes:", length);
+        for (size_t i = 0; i < length; i++) {
+            Serial.printf(" %02X", data[i]);
+        }
+        Serial.println();
     }
-    Serial.println();
 
     static int received = 0;
     static int sent = 0;
@@ -118,7 +127,7 @@ void onBleRawData(const uint8_t* data, size_t length) {
         }
     }
 
-    Serial.printf("[STATS] received=%d sent=%d\n", received, sent);
+    DBG("[STATS] received=%d sent=%d\n", received, sent);
 }
 
 // --- Setup & Loop ---
@@ -154,7 +163,7 @@ void loop() {
     bleMidi.task();
     delayMicroseconds(10);
 
-    // Drop counters: print every 2 s, only when something changed.
+    // Drop counters: print every 2 s, only when something changed (MIDI_DEBUG only).
     // All zero while notes still go missing = loss happened before the ESP32.
     static uint32_t lastDropMs = 0;
     static uint32_t lastDropSum = 0;
@@ -164,7 +173,7 @@ void loop() {
         uint32_t c = usbMidi.outQueueFullDrops, d = usbMidi.outSubmitFails;
         if (a + b + c + d != lastDropSum) {
             lastDropSum = a + b + c + d;
-            Serial.printf("[DROPS] bleRxFull=%lu bleOversize=%lu usbOutFull=%lu usbSubmitFail=%lu\n",
+            DBG("[DROPS] bleRxFull=%lu bleOversize=%lu usbOutFull=%lu usbSubmitFail=%lu\n",
                           (unsigned long)a, (unsigned long)b, (unsigned long)c, (unsigned long)d);
         }
     }
